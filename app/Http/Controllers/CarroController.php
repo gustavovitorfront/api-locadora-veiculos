@@ -5,27 +5,40 @@ namespace App\Http\Controllers;
 use App\Models\Carro;
 use App\Http\Requests\StoreCarroRequest;
 use App\Http\Requests\UpdateCarroRequest;
+use App\Repositories\CarroRepository;
+use Illuminate\Http\Request;
 
 class CarroController extends Controller
 {
+    public function __construct(Carro $carro)
+    {
+        $this->carro = $carro;
+    }
+
     /**
      * Display a listing of the resource.
      *
      * @return \Illuminate\Http\Response
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
-    }
+        $carroRepository = new CarroRepository($this->carro);
+        if($request->has('atributos_modelo')){
+            $atributos_modelo = 'modelo:id,'.$request->atributos_modelo;
+            $carroRepository->selectAttributesRegistrosRelacionados($atributos_modelo);
+        }else{
+            $carroRepository->selectAttributesRegistrosRelacionados('modelo');
+        }
 
-    /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        //
+        if($request->has('filtro')){
+            $carroRepository->filtro($request->filtro);
+        }
+
+        if($request->has('atributos')){
+            $carroRepository->selectAtributos($request->atributos);
+        }
+
+        return response()->json($carroRepository->getResultado(), 200);
     }
 
     /**
@@ -34,9 +47,18 @@ class CarroController extends Controller
      * @param  \App\Http\Requests\StoreCarroRequest  $request
      * @return \Illuminate\Http\Response
      */
-    public function store(StoreCarroRequest $request)
+    public function store(Request $request)
     {
-        //
+        $request->validate($this->carro->rules());
+
+        $carro = $this->carro->create([
+            'modelo_id' => $request->modelo_id,
+            'placa' => $request->placa,
+            'disponivel' => $request->disponivel,
+            'km' => $request->km
+        ]);
+
+        return response()->json($carro, 201);
     }
 
     /**
@@ -45,20 +67,15 @@ class CarroController extends Controller
      * @param  \App\Models\Carro  $carro
      * @return \Illuminate\Http\Response
      */
-    public function show(Carro $carro)
+    public function show($id)
     {
-        //
-    }
+        $carro = $this->carro->with('modelo')->find($id);
 
-    /**
-     * Show the form for editing the specified resource.
-     *
-     * @param  \App\Models\Carro  $carro
-     * @return \Illuminate\Http\Response
-     */
-    public function edit(Carro $carro)
-    {
-        //
+        if ($carro === null) {
+            return response()->json(['erro' => 'Recurso pesquisado não existe'], 404);
+        }
+
+        return response()->json($carro, 200);
     }
 
     /**
@@ -68,9 +85,33 @@ class CarroController extends Controller
      * @param  \App\Models\Carro  $carro
      * @return \Illuminate\Http\Response
      */
-    public function update(UpdateCarroRequest $request, Carro $carro)
+    public function update(Request $request, $id)
     {
-        //
+        $carro = $this->carro->find($id);
+
+        if ($carro === null) {
+            return response()->json(['erro' => 'Impossivel realizar a atualização. Recurso pesquisado não existe'], 404);
+        }
+
+        if ($request->method() === 'PATCH') {
+
+            $regrasDinamicas = array();
+
+            // percorre todas as regras definidas no model:
+            foreach ($carro->rules() as $input => $regra) {
+                if (array_key_exists($input, $request->all())) {
+                    $regrasDinamicas[$input] = $regra;
+                }
+            }
+
+            $request->validate($regrasDinamicas);
+        } else {
+            $request->validate($carro->rules());
+        }
+
+        $carro->fill($request->all());
+        $carro->save();
+        return response()->json($carro, 200);
     }
 
     /**
@@ -79,8 +120,15 @@ class CarroController extends Controller
      * @param  \App\Models\Carro  $carro
      * @return \Illuminate\Http\Response
      */
-    public function destroy(Carro $carro)
+    public function destroy($id)
     {
-        //
+        $carro = $this->carro->find($id);
+
+        if ($carro === null) {
+            return response()->json(['erro' => 'Impossivel realizar a exclusão. Recurso pesquisado não existe'], 404);
+        }
+
+        $carro->delete();
+        return response()->json(['msg' => 'A carro foi removido com sucesso!'], 200);
     }
 }
